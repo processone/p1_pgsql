@@ -12,7 +12,7 @@
   {modules,      []},
   {registered,   []},
   {applications, [kernel, stdlib]},
-  {mod,          {pgsql,[]}}]}.
+  {mod,          {pgsql_app,[]}}]}.
 
 %% Local Variables:
 %% mode: erlang
