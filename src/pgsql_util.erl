@@ -252,7 +252,7 @@ errordesc(<<Code/integer, Rest/binary>>, Lines, AsBin) ->
 	      Unknown ->
 		  {Unknown, String}
 	  end,
-    errordesc(Rest1, [Msg|Lines]).
+    errordesc(Rest1, [Msg|Lines], AsBin).
 
 %%% Zip two lists together
 zip(List1, List2) ->
