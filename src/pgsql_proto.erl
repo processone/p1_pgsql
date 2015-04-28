@@ -397,24 +397,26 @@ process_equery(State, Log) ->
 	    process_equery(State, Log);
 	{pgsql, {row_description, Descs}} ->
 	    OidMap = State#state.oidmap,
+	    AsBin = State#state.as_binary,
 	    {ok, Descs1} = pgsql_util:decode_descs(OidMap, Descs),
-	    process_equery_datarow(Descs1, Log, {undefined, Descs, undefined});
+	    process_equery_datarow(Descs1, Log, {undefined, Descs, undefined},
+				   AsBin);
 	{pgsql, Any} ->
 	    process_equery(State, [Any|Log])
     end.
 
-process_equery_datarow(Types, Log, Info={Command, Desc, Status}) ->
+process_equery_datarow(Types, Log, Info={Command, Desc, Status}, AsBin) ->
     receive
 	%%
 	{pgsql, {command_complete, Command1}} ->
-	    process_equery_datarow(Types, Log, {Command1, Desc, Status});
+	    process_equery_datarow(Types, Log, {Command1, Desc, Status}, AsBin);
 	{pgsql, {ready_for_query, Status1}} ->
 	    {ok, Command, Desc, Status1, lists:reverse(Log)};
 	{pgsql, {data_row, Row}} ->
-	    {ok, DecodedRow} = pgsql_util:decode_row(Types, Row),
-	    process_equery_datarow(Types, [DecodedRow|Log], Info);
+	    {ok, DecodedRow} = pgsql_util:decode_row(Types, Row, AsBin),
+	    process_equery_datarow(Types, [DecodedRow|Log], Info, AsBin);
 	{pgsql, Any} ->
-	    process_equery_datarow(Types, [Any|Log], Info)
+	    process_equery_datarow(Types, [Any|Log], Info, AsBin)
     end.
 
 process_prepare(Info={ParamDesc, ResultDesc}) ->
@@ -454,9 +456,10 @@ process_execute(State, Sock) ->
 	    {ok, _Command, _Result} = process_execute_nodata();
 	{pgsql, {row_description, Descs}} ->
 	    OidMap = State#state.oidmap,
+	    AsBin = State#state.as_binary,
 	    {ok, Types} = pgsql_util:decode_descs(OidMap, Descs),
 	    {ok, _Command, _Result} =
-		process_execute_resultset(Sock, Types, []);
+		process_execute_resultset(Sock, Types, [], AsBin);
 	{pgsql, Unknown} ->
 	    exit(Unknown)
     end.
@@ -487,13 +490,13 @@ process_execute_nodata() ->
 	{pgsql, Unknown} ->
 	    exit(Unknown)
     end.
-process_execute_resultset(Sock, Types, Log) ->
+process_execute_resultset(Sock, Types, Log, AsBin) ->
     receive
 	{pgsql, {command_complete, Command}} ->
 	    {ok, to_atom(Command), lists:reverse(Log)};
 	{pgsql, {data_row, Row}} ->
-	    {ok, DecodedRow} = pgsql_util:decode_row(Types, Row),
-	    process_execute_resultset(Sock, Types, [DecodedRow|Log]);
+	    {ok, DecodedRow} = pgsql_util:decode_row(Types, Row, AsBin),
+	    process_execute_resultset(Sock, Types, [DecodedRow|Log], AsBin);
 	{pgsql, {portal_suspended, _}} ->
 	    throw(portal_suspended);
 	{pgsql, Any} ->
