@@ -204,17 +204,17 @@ decode_row([Type|TypeTail], [Value|ValueTail], Out0, AsBin) ->
     Out1 = decode_col(Type, Value, AsBin),
     decode_row(TypeTail, ValueTail, [Out1|Out0], AsBin).
 
-decode_col({_, text, _, _, _, _, _}, Value, AsBin) ->
-    if AsBin -> Value;
-       true -> binary_to_list(Value)
-    end;
-decode_col({_Name, _Format, _ColNumber, varchar, _Size, _Modifier, _TableOID}, Value, AsBin) ->
-    if AsBin -> Value;
-       true -> binary_to_list(Value)
-    end;
+%decode_col({_, text, _, _, _, _, _}, Value, AsBin) ->
+%    if AsBin -> Value;
+%       true -> binary_to_list(Value)
+%    end;
+%decode_col({_Name, _Format, _ColNumber, varchar, _Size, _Modifier, _TableOID}, Value, AsBin) ->
+%    if AsBin -> Value;
+%       true -> binary_to_list(Value)
+%    end;
 decode_col({_Name, _Format, _ColNumber, int4, _Size, _Modifier, _TableOID}, Value, _AsBin) ->
     <<Int4:32/integer>> = Value,
-    Int4;
+    {int4, integer_to_binary(Int4)};
 decode_col({_Name, _Format, _ColNumber, Oid, _Size, _Modifier, _TableOID}, Value, _AsBin) ->
     {Oid, Value}.
 
