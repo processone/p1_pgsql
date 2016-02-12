@@ -212,9 +212,15 @@ decode_row([Type|TypeTail], [Value|ValueTail], Out0, AsBin) ->
 %    if AsBin -> Value;
 %       true -> binary_to_list(Value)
 %    end;
+decode_col({_Name, _Format, _ColNumber, int2, _Size, _Modifier, _TableOID}, Value, _AsBin) ->
+    <<Int:16/integer>> = Value,
+    {int2, integer_to_binary(Int)};
 decode_col({_Name, _Format, _ColNumber, int4, _Size, _Modifier, _TableOID}, Value, _AsBin) ->
-    <<Int4:32/integer>> = Value,
-    {int4, integer_to_binary(Int4)};
+    <<Int:32/integer>> = Value,
+    {int4, integer_to_binary(Int)};
+decode_col({_Name, _Format, _ColNumber, int8, _Size, _Modifier, _TableOID}, Value, _AsBin) ->
+    <<Int:64/integer>> = Value,
+    {int8, integer_to_binary(Int)};
 decode_col({_Name, _Format, _ColNumber, Oid, _Size, _Modifier, _TableOID}, Value, _AsBin) ->
     {Oid, Value}.
 
