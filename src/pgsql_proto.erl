@@ -304,29 +304,43 @@ handle_call({execute, {Name, Params}}, _From, State) ->
 	{pgsql, {bind_complete, _}} -> % Bind reply first.
 	    %% Collect response to describe message,
 	    %% which gives a hint of the rest of the messages.
-	    {ok, Command, Result} = process_execute(State, Sock),
+            case process_execute(State, Sock) of
+                {ok, Command, Result} ->
 
-	    begin % Close portal and end extended query.
-		CloseP = encode_message(close, {portal, ""}),
-		SyncP  = encode_message(sync, []),
-		ok = send(Sock, [CloseP, SyncP])
-	    end,
-	    receive
-		%% Collect response to close message.
-		{pgsql, {close_complete, _}} ->
-		    receive
-			%% Collect response to sync message.
-			{pgsql, {ready_for_query, _Status}} ->
-			    %%io:format("execute: ~p ~p ~p~n",
-			    %%	      [Status, Command, Result]),
-			    Reply = {ok, {Command, Result}},
-			    {reply, Reply, State};
-			{pgsql, Unknown} ->
-			    {stop, Unknown, {error, Unknown}, State}
-		    end;
-		{pgsql, Unknown} ->
-		    {stop, Unknown, {error, Unknown}, State}
-	    end;
+                    begin % Close portal and end extended query.
+                        CloseP = encode_message(close, {portal, ""}),
+                        SyncP  = encode_message(sync, []),
+                        ok = send(Sock, [CloseP, SyncP])
+                    end,
+                    receive
+                        %% Collect response to close message.
+                        {pgsql, {close_complete, _}} ->
+                            receive
+                                %% Collect response to sync message.
+                                {pgsql, {ready_for_query, _Status}} ->
+                                    %%io:format("execute: ~p ~p ~p~n",
+                                    %%	      [Status, Command, Result]),
+                                    Reply = {ok, {Command, Result}},
+                                    {reply, Reply, State};
+                                {pgsql, Unknown} ->
+                                    {stop, Unknown, {error, Unknown}, State}
+                            end;
+                        {pgsql, Unknown} ->
+                            {stop, Unknown, {error, Unknown}, State}
+                    end;
+                {error, _} = Error ->
+                    begin
+                        SyncP  = encode_message(sync, []),
+                        ok = send(Sock, [SyncP])
+                    end,
+                    receive
+                        {pgsql, {ready_for_query, _Status}} ->
+                            Reply = Error,
+                            {reply, Reply, State};
+                        {pgsql, Unknown} ->
+                            {stop, Unknown, {error, Unknown}, State}
+                    end
+            end;
 	{pgsql, {error_message, Error}} ->
 	    begin
 		SyncP  = encode_message(sync, []),
@@ -485,13 +499,12 @@ process_execute(State, Sock) ->
     %% where Result = {Command, ...}
     receive
 	{pgsql, {no_data, _}} ->
-	    {ok, _Command, _Result} = process_execute_nodata();
+	    process_execute_nodata();
 	{pgsql, {row_description, Descs}} ->
 	    OidMap = State#state.oidmap,
 	    AsBin = State#state.as_binary,
 	    {ok, Types} = pgsql_util:decode_descs(OidMap, Descs),
-	    {ok, _Command, _Result} =
-		process_execute_resultset(Sock, Types, [], AsBin);
+            process_execute_resultset(Sock, Types, [], AsBin);
 	{pgsql, Unknown} ->
 	    exit(Unknown)
     end.
@@ -523,6 +536,8 @@ process_execute_nodata() ->
 		    {ok, nyi, Any}
 	    end;
 
+	{pgsql, {error_message, Error}} ->
+            {error, Error};
 	{pgsql, Unknown} ->
 	    exit(Unknown)
     end.
@@ -535,6 +550,8 @@ process_execute_resultset(Sock, Types, Log, AsBin) ->
 	    process_execute_resultset(Sock, Types, [DecodedRow|Log], AsBin);
 	{pgsql, {portal_suspended, _}} ->
 	    throw(portal_suspended);
+	{pgsql, {error_message, Error}} ->
+            {error, Error};
 	{pgsql, Any} ->
 	    %%process_execute_resultset(Types, [Any|Log])
 	    exit(Any)
