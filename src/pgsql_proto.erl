@@ -261,6 +261,9 @@ handle_call({equery, {Query, Params}}, _From, State) ->
 %% Prepare a statement, so it can be used for queries later on.
 handle_call({prepare, {Name, Query}}, _From, State) ->
     Sock = State#state.socket,
+    %{value, {TextOid, _}} =
+    %    lists:keysearch(text, 2, dict:to_list(State#state.oidmap)),
+    %ParamOids = [TextOid || _ <- lists:seq(1, 10)],
     send_message(Sock, parse, {Name, Query, []}),
     send_message(Sock, describe, {prepared_statement, Name}),
     send_message(Sock, sync, []),
@@ -648,10 +651,13 @@ encode_message(describe, {Object, Name}) ->
     encode($D, <<ObjectP:8/integer, NameP/binary>>);
 encode_message(flush, _) ->
     encode($H, <<>>);
-encode_message(parse, {Name, Query, _Oids}) ->
+encode_message(parse, {Name, Query, Oids}) ->
     StringName = string(Name),
     StringQuery = string(Query),
-    encode($P, <<StringName/binary, StringQuery/binary, 0:16/integer>>);
+    Params = length(Oids),
+    Types = iolist_to_binary([<<Oid:32>> || Oid <- Oids]),
+    encode($P, <<StringName/binary, StringQuery/binary,
+                Params:16/integer, Types/binary>>);
 encode_message(bind, {NamePortal, NamePrepared,
 		      Parameters, ResultFormats}) ->
     PortalP = string(NamePortal),
