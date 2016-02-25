@@ -397,8 +397,12 @@ deliver(State, Message) ->
 process_squery(Log, AsBin) ->
     receive
 	{pgsql, {row_description, Cols}} ->
-	    {ok, Command, Rows} = process_squery_cols([], AsBin),
-	    process_squery([{Command, Cols, Rows}|Log], AsBin);
+            case process_squery_cols([], AsBin) of
+                {ok, Command, Rows} ->
+                    process_squery([{Command, Cols, Rows}|Log], AsBin);
+                {error, _} = Error ->
+                    process_squery([Error | Log], AsBin)
+            end;
 	{pgsql, {command_complete, Command}} ->
 	    process_squery([Command|Log], AsBin);
 	{pgsql, {ready_for_query, _Status}} ->
@@ -421,7 +425,11 @@ process_squery_cols(Log, AsBin) ->
 			 binary_to_list(R)
 		 end, Row) | Log], AsBin);
 	{pgsql, {command_complete, Command}} ->
-            {ok, Command, lists:reverse(Log)}
+            {ok, Command, lists:reverse(Log)};
+	{pgsql, {error_message, Error}} ->
+            {error, Error};
+	{pgsql, _Any} ->
+            process_squery_cols(Log, AsBin)
     end.
 
 process_equery(State, Log) ->
