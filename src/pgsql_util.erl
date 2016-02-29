@@ -204,17 +204,32 @@ decode_row([Type|TypeTail], [Value|ValueTail], Out0, AsBin) ->
     Out1 = decode_col(Type, Value, AsBin),
     decode_row(TypeTail, ValueTail, [Out1|Out0], AsBin).
 
-decode_col({_, text, _, _, _, _, _}, Value, AsBin) ->
-    if AsBin -> Value;
-       true -> binary_to_list(Value)
-    end;
-decode_col({_Name, _Format, _ColNumber, varchar, _Size, _Modifier, _TableOID}, Value, AsBin) ->
-    if AsBin -> Value;
-       true -> binary_to_list(Value)
-    end;
+%decode_col({_, text, _, _, _, _, _}, Value, AsBin) ->
+%    if AsBin -> Value;
+%       true -> binary_to_list(Value)
+%    end;
+%decode_col({_Name, _Format, _ColNumber, varchar, _Size, _Modifier, _TableOID}, Value, AsBin) ->
+%    if AsBin -> Value;
+%       true -> binary_to_list(Value)
+%    end;
+decode_col({_Name, _Format, _ColNumber, bool, _Size, _Modifier, _TableOID}, Value, _AsBin) ->
+    B = case Value of
+            <<0>> -> <<"0">>;
+            <<1>> -> <<"1">>
+        end,
+    {bool, B};
+decode_col({_Name, _Format, _ColNumber, int2, _Size, _Modifier, _TableOID}, Value, _AsBin) ->
+    <<Int:16/integer>> = Value,
+    {int2, integer_to_binary(Int)};
 decode_col({_Name, _Format, _ColNumber, int4, _Size, _Modifier, _TableOID}, Value, _AsBin) ->
-    <<Int4:32/integer>> = Value,
-    Int4;
+    <<Int:32/integer>> = Value,
+    {int4, integer_to_binary(Int)};
+decode_col({_Name, _Format, _ColNumber, int8, _Size, _Modifier, _TableOID}, Value, _AsBin) ->
+    <<Int:64/integer>> = Value,
+    {int8, integer_to_binary(Int)};
+decode_col({_Name, _Format, _ColNumber, numeric, _Size, _Modifier, _TableOID}, Value, _AsBin) ->
+    N = decode_numeric(Value),
+    {numeric, N};
 decode_col({_Name, _Format, _ColNumber, Oid, _Size, _Modifier, _TableOID}, Value, _AsBin) ->
     {Oid, Value}.
 
@@ -319,3 +334,43 @@ hexdigit(12) -> $c;
 hexdigit(13) -> $d;
 hexdigit(14) -> $e;
 hexdigit(15) -> $f.
+
+-define(NBASE, 10000).
+-define(NUMERIC_POS, 16#0000).
+-define(NUMERIC_NEG, 16#4000).
+-define(NUMERIC_NAN, 16#C000).
+
+decode_numeric(<<_Length:16/unsigned, Weight:16/signed,
+                Sign:16/unsigned, _DScale:16/unsigned, Data/binary>>) ->
+    case Sign of
+        ?NUMERIC_NAN ->
+            <<"NaN">>;
+        _ ->
+            N = decode_numeric_digits(Data, Weight, 0),
+            SN =
+                case Sign of
+                    ?NUMERIC_POS -> N;
+                    ?NUMERIC_NEG -> -N
+                end,
+            if
+                is_integer(SN) ->
+                    integer_to_binary(SN);
+                is_float(SN) ->
+                    float_to_binary(SN)
+            end
+    end.
+
+decode_numeric_digits(<<>>, Weight, Res) when Weight < 0 ->
+    Res;
+decode_numeric_digits(<<>>, Weight, Res) ->
+    decode_numeric_digits(<<>>, Weight - 1, Res * ?NBASE);
+decode_numeric_digits(Data, Weight, Res) when Weight < 0 ->
+    decode_numeric_digits1(Data, Weight, Res);
+decode_numeric_digits(<<D:16/unsigned, Data/binary>>, Weight, Res) ->
+    decode_numeric_digits(Data, Weight - 1, Res * ?NBASE + D).
+
+decode_numeric_digits1(<<>>, _Weight, Res) ->
+    Res;
+decode_numeric_digits1(<<D:16/unsigned, Data/binary>>, Weight, Res) ->
+    decode_numeric_digits1(Data, Weight - 1,
+                           Res + D * math:pow(?NBASE, Weight)).

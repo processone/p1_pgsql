@@ -70,13 +70,13 @@ pquery(Db, Query, Params) ->
 %%% Status = idle | transaction | failed_transaction
 %%% ParamTypes = [atom()]
 %%% ResultTypes = [{ColName, ColType}]
-prepare(Db, Name, Query) when is_atom(Name) ->
-    gen_server:call(Db, {prepare, {atom_to_list(Name), Query}}).
+prepare(Db, Name, Query) ->
+    gen_server:call(Db, {prepare, {Name, Query}}).
 
 %%% unprepare(Db, Name) -> ok | timeout | ...
 %%% Name = atom()
-unprepare(Db, Name) when is_atom(Name) ->
-    gen_server:call(Db, {unprepare, atom_to_list(Name)}).
+unprepare(Db, Name) ->
+    gen_server:call(Db, {unprepare, Name}).
 
 %%% execute(Db, Name, Params) -> {ok, Result} | timeout | ...
 %%% Result = {'INSERT', NRows} |
@@ -85,12 +85,5 @@ unprepare(Db, Name) when is_atom(Name) ->
 %%%          ...
 %%% ResultSet = [Row]
 %%% Row = list()
-execute(Db, Name, Params) when is_atom(Name), is_list(Params) ->
-    Ref = make_ref(),
-    Db ! {execute, Ref, self(), {atom_to_list(Name), Params}},
-    receive
-	{pgsql, Ref, Result} ->
-	    {ok, Result}
-    after 5000 ->
-	    timeout
-    end.
+execute(Db, Name, Params) when is_list(Params) ->
+    gen_server:call(Db, {execute, {Name, Params}}).

@@ -261,19 +261,27 @@ handle_call({equery, {Query, Params}}, _From, State) ->
 %% Prepare a statement, so it can be used for queries later on.
 handle_call({prepare, {Name, Query}}, _From, State) ->
     Sock = State#state.socket,
+    %{value, {TextOid, _}} =
+    %    lists:keysearch(text, 2, dict:to_list(State#state.oidmap)),
+    %ParamOids = [TextOid || _ <- lists:seq(1, 10)],
     send_message(Sock, parse, {Name, Query, []}),
     send_message(Sock, describe, {prepared_statement, Name}),
     send_message(Sock, sync, []),
-    {ok, State, ParamDesc, ResultDesc} = process_prepare({[], []}),
-    OidMap = State#state.oidmap,
-    ParamTypes =
-	lists:map(fun (Oid) -> dict:fetch(Oid, OidMap) end, ParamDesc),
-    ResultNameTypes = lists:map(fun ({ColName, _Format, _ColNo, Oid, _, _, _}) ->
-					{ColName, dict:fetch(Oid, OidMap)}
-				end,
-				ResultDesc),
-    Reply = {ok, State, ParamTypes, ResultNameTypes},
-    {reply, Reply, State};
+    case process_prepare({[], []}) of
+        {ok, Status, ParamDesc, ResultDesc} ->
+            OidMap = State#state.oidmap,
+            ParamTypes =
+                lists:map(fun (Oid) -> dict:fetch(Oid, OidMap) end, ParamDesc),
+            ResultNameTypes = lists:map(fun ({ColName, _Format, _ColNo, Oid, _, _, _}) ->
+                                                {ColName, dict:fetch(Oid, OidMap)}
+                                        end,
+                                        ResultDesc),
+            Reply = {ok, Status, ParamTypes, ResultNameTypes},
+            {reply, Reply, State};
+        {error, Error} ->
+            Reply = {error, Error},
+            {reply, Reply, State}
+    end;
 
 %% Close a prepared statement.
 handle_call({unprepare, Name}, _From, State) ->
@@ -299,29 +307,58 @@ handle_call({execute, {Name, Params}}, _From, State) ->
 	{pgsql, {bind_complete, _}} -> % Bind reply first.
 	    %% Collect response to describe message,
 	    %% which gives a hint of the rest of the messages.
-	    {ok, Command, Result} = process_execute(State, Sock),
+            case process_execute(State, Sock) of
+                {ok, Command, Result} ->
 
-	    begin % Close portal and end extended query.
-		CloseP = encode_message(close, {portal, ""}),
+                    begin % Close portal and end extended query.
+                        CloseP = encode_message(close, {portal, ""}),
+                        SyncP  = encode_message(sync, []),
+                        ok = send(Sock, [CloseP, SyncP])
+                    end,
+                    receive
+                        %% Collect response to close message.
+                        {pgsql, {close_complete, _}} ->
+                            receive
+                                %% Collect response to sync message.
+                                {pgsql, {ready_for_query, _Status}} ->
+                                    %%io:format("execute: ~p ~p ~p~n",
+                                    %%	      [Status, Command, Result]),
+                                    Reply = {ok, {Command, Result}},
+                                    {reply, Reply, State};
+                                {pgsql, Unknown} ->
+                                    {stop, Unknown, {error, Unknown}, State}
+                            end;
+                        {pgsql, Unknown} ->
+                            {stop, Unknown, {error, Unknown}, State}
+                    end;
+                {error, _} = Error ->
+                    begin
+                        SyncP  = encode_message(sync, []),
+                        ok = send(Sock, [SyncP])
+                    end,
+                    receive
+                        {pgsql, {ready_for_query, _Status}} ->
+                            Reply = Error,
+                            {reply, Reply, State};
+                        {pgsql, Unknown} ->
+                            {stop, Unknown, {error, Unknown}, State}
+                    end
+            end;
+	{pgsql, {error_message, Error}} ->
+	    begin
 		SyncP  = encode_message(sync, []),
-		ok = send(Sock, [CloseP, SyncP])
+		ok = send(Sock, [SyncP])
 	    end,
-	    receive
-		%% Collect response to close message.
-		{pgsql, {close_complete, _}} ->
-		    receive
-			%% Collect response to sync message.
-			{pgsql, {ready_for_query, _Status}} ->
-			    %%io:format("execute: ~p ~p ~p~n",
-			    %%	      [Status, Command, Result]),
-			    Reply = {ok, {Command, Result}},
-			    {reply, Reply, State};
-			{pgsql, Unknown} ->
-			    {stop, Unknown, {error, Unknown}, State}
-		    end;
-		{pgsql, Unknown} ->
-		    {stop, Unknown, {error, Unknown}, State}
-	    end;
+            receive
+                %% Collect response to sync message.
+                {pgsql, {ready_for_query, _Status}} ->
+                    %%io:format("execute: ~p ~p ~p~n",
+                    %%	      [Status, Command, Result]),
+                    Reply = {error, Error},
+                    {reply, Reply, State};
+                {pgsql, Unknown} ->
+                    {stop, Unknown, {error, Unknown}, State}
+            end;
 	{pgsql, Unknown} ->
 	    {stop, Unknown, {error, Unknown}, State}
     end;
@@ -343,6 +380,7 @@ code_change(_OldVsn, State, _Extra) ->
 handle_info({socket, _Sock, Condition}, State) ->
     {stop, {socket, Condition}, State};
 handle_info(_Info, State) ->
+    %%io:format("pgsql unexpected info ~p~n", [_Info]),
     {noreply, State}.
 
 
@@ -359,8 +397,12 @@ deliver(State, Message) ->
 process_squery(Log, AsBin) ->
     receive
 	{pgsql, {row_description, Cols}} ->
-	    {ok, Command, Rows} = process_squery_cols([], AsBin),
-	    process_squery([{Command, Cols, Rows}|Log], AsBin);
+            case process_squery_cols([], AsBin) of
+                {ok, Command, Rows} ->
+                    process_squery([{Command, Cols, Rows}|Log], AsBin);
+                {error, _} = Error ->
+                    process_squery([Error | Log], AsBin)
+            end;
 	{pgsql, {command_complete, Command}} ->
 	    process_squery([Command|Log], AsBin);
 	{pgsql, {ready_for_query, _Status}} ->
@@ -383,7 +425,11 @@ process_squery_cols(Log, AsBin) ->
 			 binary_to_list(R)
 		 end, Row) | Log], AsBin);
 	{pgsql, {command_complete, Command}} ->
-            {ok, Command, lists:reverse(Log)}
+            {ok, Command, lists:reverse(Log)};
+	{pgsql, {error_message, Error}} ->
+            {error, Error};
+	{pgsql, _Any} ->
+            process_squery_cols(Log, AsBin)
     end.
 
 process_equery(State, Log) ->
@@ -431,9 +477,20 @@ process_prepare(Info={ParamDesc, ResultDesc}) ->
 	    process_prepare({ParamDesc, Desc});
 	{pgsql, {ready_for_query, Status}} ->
 	    {ok, Status, ParamDesc, ResultDesc};
-	{pgsql, Any} ->
-	    io:format("process_prepare: ~p~n", [Any]),
+	{pgsql, {error_message, Error}} ->
+            process_prepare_error(Error);
+	{pgsql, _Any} ->
+	    %%io:format("process_prepare: ~p~n", [Any]),
 	    process_prepare(Info)
+    end.
+
+process_prepare_error(Error) ->
+    receive
+	{pgsql, {ready_for_query, _Status}} ->
+	    {error, Error};
+	{pgsql, _Any} ->
+	    %%io:format("process_prepare: ~p~n", [Any]),
+	    process_prepare_error(Error)
     end.
 
 process_unprepare() ->
@@ -442,8 +499,8 @@ process_unprepare() ->
 	    {ok, Status};
 	{pgsql, {close_complate, []}} ->
 	    process_unprepare();
-	{pgsql, Any} ->
-	    io:format("process_unprepare: ~p~n", [Any]),
+	{pgsql, _Any} ->
+	    %%io:format("process_unprepare: ~p~n", [Any]),
 	    process_unprepare()
     end.
 
@@ -453,13 +510,12 @@ process_execute(State, Sock) ->
     %% where Result = {Command, ...}
     receive
 	{pgsql, {no_data, _}} ->
-	    {ok, _Command, _Result} = process_execute_nodata();
+	    process_execute_nodata();
 	{pgsql, {row_description, Descs}} ->
 	    OidMap = State#state.oidmap,
 	    AsBin = State#state.as_binary,
 	    {ok, Types} = pgsql_util:decode_descs(OidMap, Descs),
-	    {ok, _Command, _Result} =
-		process_execute_resultset(Sock, Types, [], AsBin);
+            process_execute_resultset(Sock, Types, [], AsBin);
 	{pgsql, Unknown} ->
 	    exit(Unknown)
     end.
@@ -483,22 +539,30 @@ process_execute_nodata() ->
 		    {ok, [{integer, _, NRows}], _} =
 			erl_scan:string(Rest),
 		    {ok, 'DELETE', NRows};
+		"UPDATE "++Rest ->
+		    {ok, [{integer, _, NRows}], _} =
+			erl_scan:string(Rest),
+		    {ok, 'UPDATE', NRows};
 		Any ->
 		    {ok, nyi, Any}
 	    end;
 
+	{pgsql, {error_message, Error}} ->
+            {error, Error};
 	{pgsql, Unknown} ->
 	    exit(Unknown)
     end.
 process_execute_resultset(Sock, Types, Log, AsBin) ->
     receive
 	{pgsql, {command_complete, Command}} ->
-	    {ok, to_atom(Command), lists:reverse(Log)};
+	    {ok, Command, lists:reverse(Log)};
 	{pgsql, {data_row, Row}} ->
 	    {ok, DecodedRow} = pgsql_util:decode_row(Types, Row, AsBin),
 	    process_execute_resultset(Sock, Types, [DecodedRow|Log], AsBin);
 	{pgsql, {portal_suspended, _}} ->
 	    throw(portal_suspended);
+	{pgsql, {error_message, Error}} ->
+            {error, Error};
 	{pgsql, Any} ->
 	    %%process_execute_resultset(Types, [Any|Log])
 	    exit(Any)
@@ -595,10 +659,13 @@ encode_message(describe, {Object, Name}) ->
     encode($D, <<ObjectP:8/integer, NameP/binary>>);
 encode_message(flush, _) ->
     encode($H, <<>>);
-encode_message(parse, {Name, Query, _Oids}) ->
+encode_message(parse, {Name, Query, Oids}) ->
     StringName = string(Name),
     StringQuery = string(Query),
-    encode($P, <<StringName/binary, StringQuery/binary, 0:16/integer>>);
+    Params = length(Oids),
+    Types = iolist_to_binary([<<Oid:32>> || Oid <- Oids]),
+    encode($P, <<StringName/binary, StringQuery/binary,
+                Params:16/integer, Types/binary>>);
 encode_message(bind, {NamePortal, NamePrepared,
 		      Parameters, ResultFormats}) ->
     PortalP = string(NamePortal),
