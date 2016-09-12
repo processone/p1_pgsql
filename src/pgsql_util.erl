@@ -222,10 +222,10 @@ decode_col({_Name, _Format, _ColNumber, int2, _Size, _Modifier, _TableOID}, Valu
     <<Int:16/integer>> = Value,
     {int2, integer_to_binary(Int)};
 decode_col({_Name, _Format, _ColNumber, int4, _Size, _Modifier, _TableOID}, Value, _AsBin) ->
-    <<Int:32/integer>> = Value,
+    <<Int:32/signed-integer>> = Value,
     {int4, integer_to_binary(Int)};
 decode_col({_Name, _Format, _ColNumber, int8, _Size, _Modifier, _TableOID}, Value, _AsBin) ->
-    <<Int:64/integer>> = Value,
+    <<Int:64/signed-integer>> = Value,
     {int8, integer_to_binary(Int)};
 decode_col({_Name, _Format, _ColNumber, numeric, _Size, _Modifier, _TableOID}, Value, _AsBin) ->
     N = decode_numeric(Value),
