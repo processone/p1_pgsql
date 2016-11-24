@@ -10,10 +10,10 @@
 -module(pgsql).
 -export([connect/1, connect/4, connect/5]).
 
--export([squery/2, 
-	 pquery/3, 
-	 terminate/1, 
-	 prepare/3, unprepare/2, 
+-export([squery/2, squery/3,
+	 pquery/3,
+	 terminate/1,
+	 prepare/3, unprepare/2,
 	 execute/3]).
 
 
@@ -37,9 +37,9 @@ connect(Options) ->
 terminate(Db) ->
     gen_server:call(Db, terminate).
 
-%%% In the "simple query" protocol, the frontend just sends a 
-%%% textual query string, which is parsed and immediately 
-%%% executed by the backend.  
+%%% In the "simple query" protocol, the frontend just sends a
+%%% textual query string, which is parsed and immediately
+%%% executed by the backend.
 
 %% A simple query can contain multiple statements (separated with a semi-colon),
 %% and each statement's response.
@@ -51,7 +51,15 @@ terminate(Db) ->
 squery(Db, Query) ->
     gen_server:call(Db, {squery, Query}, infinity).
 
-%%% In the "extended query" protocol, processing of queries is 
+%%% squery(Db, Query, Timeout) -> {ok, Results} | ... no real error handling
+%%% Query = string()
+%%% Timeout = milliseconds()
+%%% Results = [Result]
+%%% Result = {"SELECT", RowDesc, ResultSet} | ...
+squery(Db, Query, Timeout) ->
+    gen_server:call(Db, {squery, Query}, Timeout).
+
+%%% In the "extended query" protocol, processing of queries is
 %%% separated into multiple steps: parsing, binding of parameter
 %%% values, and execution. This offers flexibility and performance
 %%% benefits, at the cost of extra complexity.
