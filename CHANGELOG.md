@@ -1,3 +1,9 @@
+# Version 1.1.1
+
+* adding timeout to pgsql:squery (Felipe Ripoll)
+* Decode int4 and int8 as signed integers (Alexey Shchepin)
+* Better error handling in pgsql:squery (Alexey Shchepin)
+
 # Version 1.1.0
 
 * Fixes 'prepare' and 'execute' calls (Alexey Shchepin)
