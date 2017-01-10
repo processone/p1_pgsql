@@ -1,3 +1,7 @@
+# Version 1.1.2
+
+* Add SSL support (Evgeniy Khramtsov)
+
 # Version 1.1.1
 
 * adding timeout to pgsql:squery (Felipe Ripoll)
