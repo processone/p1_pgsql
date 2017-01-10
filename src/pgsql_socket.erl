@@ -1,9 +1,9 @@
-%%% File    : pgsql_tcp.erl
+%%% File    : pgsql_socket.erl
 %%% Author  : Blah <cos@local>
-%%% Description : Unwrapping of TCP line protocol packages to postgres messages.
+%%% Description : Unwrapping of TCP/SSL line protocol packages to postgres messages.
 %%% Created : 22 Jul 2005
 
--module(pgsql_tcp).
+-module(pgsql_socket).
 
 -behaviour(gen_server).
 
@@ -17,7 +17,7 @@
 	 handle_info/2,
 	 terminate/2]).
 
--record(state, {socket, protopid, buffer, as_binary}).
+-record(state, {socket, sockmod, protopid, buffer, as_binary}).
 
 start(Sock, ProtoPid, AsBin) ->
     gen_server:start(?MODULE, [Sock, ProtoPid, AsBin], []).
@@ -25,9 +25,9 @@ start(Sock, ProtoPid, AsBin) ->
 start_link(Sock, ProtoPid, AsBin) ->
     gen_server:start_link(?MODULE, [Sock, ProtoPid, AsBin], []).
 
-init([Sock, ProtoPid, AsBin]) ->
-    inet:setopts(Sock, [{active, once}]),
-    {ok, #state{socket = Sock, protopid = ProtoPid,
+init([{Mod, Sock}, ProtoPid, AsBin]) ->
+    setopts({Mod, Sock}, [{active, once}]),
+    {ok, #state{socket = Sock, sockmod = Mod, protopid = ProtoPid,
                 buffer = <<>>, as_binary = AsBin}}.
 
 handle_call(_Request, _From, State) ->
@@ -40,25 +40,29 @@ handle_cast(_Msg, State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-handle_info({tcp, Sock, Bin},
+handle_info({Tag, Sock, Bin},
 	    #state{socket = Sock,
+		   sockmod = Mod,
 		   protopid = ProtoPid,
                    as_binary = AsBin,
-		   buffer = Buffer} = State) ->
+		   buffer = Buffer} = State)
+  when Tag == tcp; Tag == ssl ->
     {ok, Rest} = process_buffer(ProtoPid, AsBin, <<Buffer/binary, Bin/binary>>),
-    inet:setopts(Sock, [{active, once}]),
+    setopts({Mod, Sock}, [{active, once}]),
     {noreply, State#state{buffer = Rest}};
-handle_info({tcp_closed, Sock},
-	    #state{socket = Sock,
-		   protopid = ProtoPid} = State) ->
+handle_info({Tag, Sock},
+	    #state{socket = Sock, sockmod = Mod,
+		   protopid = ProtoPid} = State)
+  when Tag == tcp_closed; Tag == ssl_closed ->
     io:format("Sock closed~n", []),
-    ProtoPid ! {socket, Sock, closed},
+    ProtoPid ! {socket, {Mod, Sock}, closed},
     {stop, tcp_close, State};
-handle_info({tcp_error, Sock, Reason},
-	    #state{socket = Sock,
-		   protopid = ProtoPid} = State) ->
+handle_info({Tag, Sock, Reason},
+	    #state{socket = Sock, sockmod = Mod,
+		   protopid = ProtoPid} = State)
+  when Tag == tcp_error; Tag == ssl_error ->
     io:format("Sock error~n", []),
-    ProtoPid ! {socket, Sock, {error, Reason}},
+    ProtoPid ! {socket, {Mod, Sock}, {error, Reason}},
     {stop, tcp_error, State};
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -86,3 +90,7 @@ process_buffer(ProtoPid, AsBin,
 process_buffer(_ProtoPid, _AsBin, Bin) when is_binary(Bin) ->
     {ok, Bin}.
 
+setopts({gen_tcp, Sock}, Opts) ->
+    inet:setopts(Sock, Opts);
+setopts({ssl, Sock}, Opts) ->
+    ssl:setopts(Sock, Opts).

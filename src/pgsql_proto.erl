@@ -19,6 +19,7 @@
 %%% Supported in postgres from version 7.4
 -define(PROTOCOL_MAJOR, 3).
 -define(PROTOCOL_MINOR, 0).
+-define(STARTTLS, 80877103).
 
 %%% PostgreSQL protocol message codes
 -define(PG_BACKEND_KEY_DATA, $K).
@@ -49,13 +50,13 @@
 	 handle_info/2,
 	 terminate/2]).
 
-%% For protocol unwrapping, pgsql_tcp for example.
+%% For protocol unwrapping, pgsql_socket for example.
 -export([decode_packet/3]).
 -export([encode_message/2]).
 -export([encode/2]).
 
 -import(pgsql_util, [option/3]).
--import(pgsql_util, [socket/1]).
+-import(pgsql_util, [socket/1, close/1, controlling_process/2, starttls/2]).
 -import(pgsql_util, [send/2, send_int/2, send_msg/3]).
 -import(pgsql_util, [recv_msg/2, recv_msg/1, recv_byte/2, recv_byte/1]).
 -import(pgsql_util, [string/1, make_pair/2, split_pair/2]).
@@ -63,7 +64,8 @@
 -import(pgsql_util, [coldescs/3, datacoldescs/3]).
 -import(pgsql_util, [to_integer/1, to_atom/1]).
 
--record(state, {options, driver, params, socket, oidmap, as_binary}).
+-record(state, {options, ssl_options, transport,
+		driver, params, socket, oidmap, as_binary}).
 
 start(Options) ->
     gen_server:start(?MODULE, [self(), Options], []).
@@ -75,20 +77,45 @@ init([DriverPid, Options]) ->
     %%io:format("Init~n", []),
     %% Default values: We connect to localhost on the standard TCP/IP
     %% port.
-    Host = option(Options, host, "localhost"),
-    Port = option(Options, port, 5432),
-    AsBinary = option(Options, as_binary, false),
+    {CommonOpts, SSLOpts} =
+	lists:partition(
+	  fun({host, _}) -> true;
+	     ({port, _}) -> true;
+	     ({as_binary, _}) -> true;
+	     ({user, _}) -> true;
+	     ({password, _}) -> true;
+	     ({database, _}) -> true;
+	     ({transport, _}) -> true;
+	     (_) -> false
+	  end, Options),
+    Host = option(CommonOpts, host, "localhost"),
+    Port = option(CommonOpts, port, 5432),
+    AsBinary = option(CommonOpts, as_binary, false),
+    Transport = option(CommonOpts, transport, tcp),
 
-    case socket({tcp, Host, Port}) of
+    case socket({Host, Port}) of
 	{ok, Sock} ->
-	    connect(#state{options = Options,
+	    State = #state{options = CommonOpts,
+			   transport = Transport,
+			   ssl_options = SSLOpts,
 			   driver = DriverPid,
                            as_binary = AsBinary,
-			   socket = Sock});
+			   socket = Sock},
+	    case Transport of
+		tcp -> connect(State);
+		ssl -> starttls(State)
+	    end;
 	Error ->
 	    Reason = {init, Error},
 	    {stop, Reason}
     end.
+
+starttls(StateData) ->
+    SSLRequest = <<?STARTTLS:32>>,
+    PacketSize = 4 + size(SSLRequest),
+    Sock = StateData#state.socket,
+    ok = pgsql_util:send(Sock, <<PacketSize:32/integer, SSLRequest/binary>>),
+    process_starttls(StateData).
 
 connect(StateData) ->
     %%io:format("Connect~n", []),
@@ -109,9 +136,24 @@ connect(StateData) ->
     %% Backend will continue with authentication after the startup packet
     PacketSize = 4 + size(StartupPacket),
     Sock = StateData#state.socket,
-    ok = gen_tcp:send(Sock, <<PacketSize:32/integer, StartupPacket/binary>>),
+    ok = pgsql_util:send(Sock, <<PacketSize:32/integer, StartupPacket/binary>>),
     authenticate(StateData).
 
+process_starttls(StateData) ->
+    Sock = StateData#state.socket,
+    case recv_byte(Sock, 5000) of
+	{ok, $S} ->
+	    case starttls(Sock, StateData#state.ssl_options) of
+		{ok, Sock1} ->
+		    connect(StateData#state{socket = Sock1});
+		{error, _} = Err ->
+		    throw(Err)
+	    end;
+	{ok, $N} ->
+	    {stop, {starttls, denied}};
+	{error, _} = Err ->
+	    throw(Err)
+    end.
 
 authenticate(StateData) ->
     %% Await authentication request from backend.
@@ -171,7 +213,7 @@ setup(StateData, Params) ->
 	%% Error message, with a sequence of <<Code:8/integer, String, 0>>
 	%% of error descriptions. Code==0 terminates the Reason.
 	{error_message, Message} ->
-	    gen_tcp:close(Sock),
+	    close(Sock),
 	    {stop, {error_response, Message}};
 	%% Notice Response, with a sequence of <<Code:8/integer, String,0>>
 	%% identified fields. Code==0 terminates the Notice.
@@ -192,8 +234,8 @@ connected(StateData, Sock) ->
     %% SSL and unix domain support easier. Store process under
     %% 'socket' in the process dictionary.
     AsBin = StateData#state.as_binary,
-    {ok, Unwrapper} = pgsql_tcp:start_link(Sock, self(), AsBin),
-    ok = gen_tcp:controlling_process(Sock, Unwrapper),
+    {ok, Unwrapper} = pgsql_socket:start_link(Sock, self(), AsBin),
+    ok = controlling_process(Sock, Unwrapper),
 
     %% Lookup oid to type names and store them in a dictionary under
     %% 'oidmap' in the process dictionary.
@@ -215,7 +257,7 @@ handle_call(terminate, _From, State) ->
     Sock = State#state.socket,
     Packet = encode_message(terminate, []),
     ok = send(Sock, Packet),
-    gen_tcp:close(Sock),
+    close(Sock),
     Reply = ok,
     {stop, normal, Reply, State};
 
