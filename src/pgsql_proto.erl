@@ -56,7 +56,7 @@
 -export([encode/2]).
 
 -import(pgsql_util, [option/3]).
--import(pgsql_util, [socket/1, close/1, controlling_process/2, starttls/2]).
+-import(pgsql_util, [socket/2, close/1, controlling_process/2, starttls/2]).
 -import(pgsql_util, [send/2, send_int/2, send_msg/3]).
 -import(pgsql_util, [recv_msg/2, recv_msg/1, recv_byte/2, recv_byte/1]).
 -import(pgsql_util, [string/1, make_pair/2, split_pair/2]).
@@ -86,14 +86,16 @@ init([DriverPid, Options]) ->
 	     ({password, _}) -> true;
 	     ({database, _}) -> true;
 	     ({transport, _}) -> true;
+	     ({connect_timeout, _}) -> true;
 	     (_) -> false
 	  end, Options),
     Host = option(CommonOpts, host, "localhost"),
     Port = option(CommonOpts, port, 5432),
     AsBinary = option(CommonOpts, as_binary, false),
     Transport = option(CommonOpts, transport, tcp),
+    Timeout = option(CommonOpts, connect_timeout, 5000),
 
-    case socket({Host, Port}) of
+    case socket({Host, Port}, Timeout) of
 	{ok, Sock} ->
 	    State = #state{options = CommonOpts,
 			   transport = Transport,

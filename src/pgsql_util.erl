@@ -10,7 +10,7 @@
 -export([option/3]).
 
 %% Networking
--export([socket/1, close/1, controlling_process/2, starttls/2]).
+-export([socket/2, close/1, controlling_process/2, starttls/2]).
 -export([send/2, send_int/2, send_msg/3]).
 -export([recv_msg/2, recv_msg/1, recv_byte/2, recv_byte/1]).
 
@@ -44,9 +44,10 @@ option(Opts, Key, Default) ->
 
 
 %% Open a connection
-socket({Host, Port}) ->
+socket({Host, Port}, Timeout) ->
     case gen_tcp:connect(Host, Port,
-			 [{active, false}, binary, {packet, raw}], 5000) of
+			 [{active, false}, binary, {packet, raw}],
+			 Timeout) of
 	{ok, Sock} ->
 	    {ok, {gen_tcp, Sock}};
 	{error, _} = Err ->

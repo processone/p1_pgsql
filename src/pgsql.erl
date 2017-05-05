@@ -8,7 +8,7 @@
 %%
 
 -module(pgsql).
--export([connect/1, connect/4, connect/5]).
+-export([connect/1, connect/4, connect/5, connect/6]).
 
 -export([squery/2, squery/3,
 	 pquery/3,
@@ -29,6 +29,14 @@ connect(Host, Database, User, Password, Port) ->
 	     {user, User},
 	     {port, Port},
 	     {password, Password}]).
+
+connect(Host, Database, User, Password, Port, ConnectTimeout) ->
+    connect([{database, Database},
+	     {host, Host},
+	     {user, User},
+	     {port, Port},
+	     {password, Password},
+	     {connect_timeout, ConnectTimeout}]).
 
 connect(Options) ->
     pgsql_proto:start(Options).
