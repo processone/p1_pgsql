@@ -1,3 +1,7 @@
+# Version 1.1.3
+
+* Make it possible to set connect timeout
+
 # Version 1.1.2
 
 * Add SSL support (Evgeniy Khramtsov)
