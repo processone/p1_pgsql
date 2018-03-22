@@ -23,7 +23,7 @@
 
 {application, p1_pgsql,
  [{description,  "PostgreSQL driver"},
-  {vsn,          "1.1.4"},
+  {vsn,          "1.1.5"},
   {modules,      []},
   {registered,   []},
   {applications, [kernel, stdlib]},
