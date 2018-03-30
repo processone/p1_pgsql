@@ -65,7 +65,7 @@
 -import(pgsql_util, [to_integer/1, to_atom/1]).
 
 -record(state, {options, ssl_options, transport,
-		driver, params, socket, oidmap, as_binary}).
+		driver, params, socket, oidmap, as_binary, ctl_socket}).
 
 start(Options) ->
     gen_server:start(?MODULE, [self(), Options], []).
@@ -252,7 +252,7 @@ connected(StateData, Sock) ->
 		      Rows),
     OidMap = dict:from_list(Rows1),
 
-    {ok, StateData#state{oidmap = OidMap}}.
+    {ok, StateData#state{oidmap = OidMap, ctl_socket = Unwrapper}}.
 
 
 handle_call(terminate, _From, State) ->
@@ -428,7 +428,8 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 
-terminate(_Reason, _State) ->
+terminate(_Reason, State) ->
+	ok = gen_server:call(State#state.ctl_socket, terminate),
     ok.
 
 
