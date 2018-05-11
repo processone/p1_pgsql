@@ -29,6 +29,7 @@
 -export([pass_plain/1, pass_md5/3]).
 -import(erlang, [md5/1]).
 -export([hexlist/2]).
+-include_lib("kernel/include/inet.hrl").
 
 %% Lookup key in a plist stored in process dictionary under 'options'.
 %% Default is returned if there is no value for Key in the plist.
@@ -45,9 +46,7 @@ option(Opts, Key, Default) ->
 
 %% Open a connection
 socket({Host, Port}, Timeout) ->
-    case gen_tcp:connect(Host, Port,
-			 [{active, false}, binary, {packet, raw}],
-			 Timeout) of
+    case connect(Host, Port, Timeout) of
 	{ok, Sock} ->
 	    {ok, {gen_tcp, Sock}};
 	{error, _} = Err ->
@@ -397,3 +396,64 @@ decode_numeric_digits1(<<>>, _Weight, Res) ->
 decode_numeric_digits1(<<D:16/unsigned, Data/binary>>, Weight, Res) ->
     decode_numeric_digits1(Data, Weight - 1,
                            Res + D * math:pow(?NBASE, Weight)).
+
+%%--------------------------------------------------------------------
+%% Connecting stuff
+%%--------------------------------------------------------------------
+connect(Host, Port, Timeout) ->
+    case lookup(Host, Timeout) of
+	{ok, AddrsFamilies} ->
+	    do_connect(AddrsFamilies, Port, Timeout, {error, nxdomain});
+	{error, _} = Err ->
+	    Err
+    end.
+
+do_connect([{IP, Family}|AddrsFamilies], Port, Timeout, _Err) ->
+    case gen_tcp:connect(IP, Port, [{active, false}, binary,
+				    {packet, raw}, Family], Timeout) of
+	{ok, Sock} ->
+	    {ok, Sock};
+	{error, _} = Err ->
+	    do_connect(AddrsFamilies, Port, Timeout, Err)
+    end;
+do_connect([], _Port, _Timeout, Err) ->
+    Err.
+
+lookup(Host, Timeout) ->
+    case inet:parse_address(Host) of
+	{ok, IP} ->
+	    {ok, [{IP, get_addr_type(IP)}]};
+	{error, _} ->
+	    do_lookup([{Host, Family} || Family <- [inet6, inet]],
+		      Timeout, [], {error, nxdomain})
+    end.
+
+do_lookup([{Host, Family}|HostFamilies], Timeout, AddrFamilies, Err) ->
+    case inet:gethostbyname(Host, Family, Timeout) of
+	{ok, HostEntry} ->
+	    Addrs = host_entry_to_addrs(HostEntry),
+	    AddrFamilies1 = [{Addr, Family} || Addr <- Addrs],
+	    do_lookup(HostFamilies, Timeout,
+		      AddrFamilies ++ AddrFamilies1,
+		      Err);
+	{error, _} = Err1 ->
+	    do_lookup(HostFamilies, Timeout, AddrFamilies, Err1)
+    end;
+do_lookup([], _Timeout, [], Err) ->
+    Err;
+do_lookup([], _Timeout, AddrFamilies, _Err) ->
+    {ok, AddrFamilies}.
+
+host_entry_to_addrs(#hostent{h_addr_list = AddrList}) ->
+    lists:filter(
+      fun(Addr) ->
+	      try get_addr_type(Addr) of
+		  _ -> true
+	      catch _:badarg ->
+		      false
+	      end
+      end, AddrList).
+
+get_addr_type({_, _, _, _}) -> inet;
+get_addr_type({_, _, _, _, _, _, _, _}) -> inet6;
+get_addr_type(_) -> erlang:error(badarg).
