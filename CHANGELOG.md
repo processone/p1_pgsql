@@ -1,3 +1,7 @@
+# Version 1.1.6
+
+* Add support for ipv6 connections
+
 # Version 1.1.5
 
 * Fix compilation with rebar3
