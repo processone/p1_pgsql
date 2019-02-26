@@ -31,7 +31,6 @@
 
   %% hex.pm packaging:
   {licenses, ["EPL 1.1", "Apache 2.0"]},
-  {maintainers, ["ProcessOne"]},
   {links, [{"Github", "https://github.com/processone/p1_pgsql"}]}]}.
 
 %% Local Variables:
