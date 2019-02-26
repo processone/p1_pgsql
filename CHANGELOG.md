@@ -1,3 +1,7 @@
+# Version 1.1.7
+
+* Add contribution guide
+
 # Version 1.1.6
 
 * Add support for ipv6 connections
