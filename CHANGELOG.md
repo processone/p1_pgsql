@@ -1,3 +1,7 @@
+# Version 1.1.9
+
+* Update copyright year
+
 # Version 1.1.7
 
 * Add contribution guide
