@@ -21,5 +21,5 @@ otp_release:
   - 23.0
 
 after_success:
-  - coveralls --exclude lib --exclude tests --gcov-options '\-lp' --dump c.json
+  - cpp-coveralls --exclude lib --exclude tests --gcov-options '\-lp' --dump c.json
   - coveralls-merge c.json erlang.json
