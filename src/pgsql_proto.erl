@@ -292,14 +292,17 @@ handle_call({equery, {Query, Params}}, _From, State) ->
     SyncP =     encode_message(sync, []),
     ok = send(Sock, [ParseP, BindP, DescribeP, ExecuteP, SyncP]),
 
-    {ok, Command, Desc, Status, Logs} = process_equery(State, []),
+    Reply = case process_equery(State, []) of
+        {ok, Command, Desc, Status, Logs} ->
+                OidMap = State#state.oidmap,
+                NameTypes = lists:map(fun({Name, _Format, _ColNo, Oid, _, _, _}) ->
+                                            {Name, dict:fetch(Oid, OidMap)}
+                                        end,
+                                        Desc),
+                {ok, Command, Status, NameTypes, Logs};
+        {error, Error} -> {error, Error}
+    end,
 
-    OidMap = State#state.oidmap,
-    NameTypes = lists:map(fun({Name, _Format, _ColNo, Oid, _, _, _}) ->
-				  {Name, dict:fetch(Oid, OidMap)}
-			  end,
-			  Desc),
-    Reply = {ok, Command, Status, NameTypes, Logs},
     {reply, Reply, State};
 
 %% Prepare a statement, so it can be used for queries later on.
