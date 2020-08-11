@@ -504,7 +504,7 @@ process_equery_nodata(Log, Command) ->
     {pgsql, {ready_for_query, Status1}} ->
         {ok, Command, [], Status1, lists:reverse(Log)};
     {pgsql, Any} ->
-        process_equery_nodata([Any|Log], Command);
+        process_equery_nodata([Any|Log], Command)
     end.
 
 process_equery_datarow(Types, Log, Info={Command, Desc, Status}, AsBin) ->
