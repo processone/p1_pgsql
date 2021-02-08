@@ -152,9 +152,7 @@ process_starttls(StateData) ->
 		    throw(Err)
 	    end;
 	{ok, $N} ->
-	    {stop, {starttls, denied}};
-	{error, _} = Err ->
-	    throw(Err)
+	    {stop, {starttls, denied}}
     end.
 
 authenticate(StateData) ->
