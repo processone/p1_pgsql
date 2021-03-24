@@ -1,6 +1,20 @@
+# Version 1.1.11
+
+* Update copyright year to 2021
+* recv_byte returns {ok, _} or throws an error, but never returns {error, _}
+
+# Version 1.1.10
+
+* Fix Coveralls command call
+* Fix Travis setup using Rebar3
+
 # Version 1.1.9
 
-* Update copyright year
+* Update copyright to 2020
+
+# Version 1.1.8
+
+* Update for hex.pm release
 
 # Version 1.1.7
 
