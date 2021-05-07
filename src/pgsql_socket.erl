@@ -30,6 +30,8 @@ init([{Mod, Sock}, ProtoPid, AsBin]) ->
     {ok, #state{socket = Sock, sockmod = Mod, protopid = ProtoPid,
                 buffer = <<>>, as_binary = AsBin}}.
 
+handle_call(terminate, _From, State) ->
+    {stop, normal, ok, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -64,7 +66,8 @@ handle_info({Tag, Sock, Reason},
     io:format("Sock error~n", []),
     ProtoPid ! {socket, {Mod, Sock}, {error, Reason}},
     {stop, tcp_error, State};
-handle_info(_Info, State) ->
+handle_info(Info, State) ->
+    io:format("Unhandled pgsql_socket message: ~p~n", [Info]),
     {noreply, State}.
 
 
