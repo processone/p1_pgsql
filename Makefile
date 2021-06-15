@@ -1,9 +1,12 @@
+REBAR ?= rebar
+
 all: src
 
 src:
-	rebar compile xref
+	$(REBAR) compile
+	$(REBAR) xref
 
 clean:
-	rebar clean
+	$(REBAR) clean
 
 .PHONY: clean src
