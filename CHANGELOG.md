@@ -1,3 +1,7 @@
+# Version 1.1.12
+
+* Switch from using Travis to Github Actions as CI
+
 # Version 1.1.11
 
 * Update copyright year to 2021
