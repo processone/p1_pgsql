@@ -22,13 +22,15 @@
 -export([client_new/3, client_step/2, client_finish/2]).
 
 -record(sasl_state,
-        {user     :: binary(),
-         password :: binary(),
-         nonce    :: binary(),
-         verify   :: binary()
+        {user          :: binary(),
+         password      :: binary(),
+         nonce         :: binary(),
+         verify = <<>> :: binary()
 }).
 
-
+-spec client_new(binary(), binary(), list(binary())) ->
+                        {ok, binary(), binary(), #sasl_state{}} |
+                        {error, any()}.
 client_new(User, Password, Mechs) ->
     case lists:member(<<"SCRAM-SHA-256">>, Mechs) of
         true ->
@@ -43,6 +45,9 @@ client_new(User, Password, Mechs) ->
             {error, "No supported SASL mechs"}
     end.
 
+-spec client_step(#sasl_state{}, binary()) ->
+                         {ok, binary(), #sasl_state{}} |
+                         {error, any()}.
 client_step(State, ServerResponse) ->
     case parse(ServerResponse) of
         SResp when is_list(SResp) ->
@@ -84,6 +89,7 @@ client_step(State, ServerResponse) ->
             {error, {"Error parsing server response", ServerResponse}}
     end.
 
+-spec client_finish(#sasl_state{}, binary()) -> ok | {error, any()}.
 client_finish(State, ServerResponse) ->
     case parse(ServerResponse) of
         SResp when is_list(SResp) ->

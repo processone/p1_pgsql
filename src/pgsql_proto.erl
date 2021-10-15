@@ -191,10 +191,7 @@ authenticate(StateData) ->
                 10 -> % SASL
 		    Password = option(StateData#state.options, password, ""),
 		    User = option(StateData#state.options, user, ""),
-                    Mechs =
-                        lists:filter(
-                          fun(S) -> size(S) > 0 end,
-                          string:split(AuthData, <<0>>, all)),
+                    Mechs = binary:split(AuthData, <<0>>, [global, trim_all]),
                     BUser = list_to_binary(User),
                     BPassword = list_to_binary(Password),
                     case pgsql_sasl:client_new(BUser, BPassword, Mechs) of
