@@ -65,6 +65,7 @@
 -import(pgsql_util, [to_integer/1, to_atom/1]).
 
 -record(state, {options, ssl_options, transport,
+                sasl_state,
 		driver, params, socket, oidmap, as_binary}).
 
 start(Options) ->
@@ -165,7 +166,7 @@ authenticate(StateData) ->
 	%% Error response
 	{error_message, Message} ->
 	    {stop, {authentication, Message}};
-	{authenticate, {AuthMethod, Salt}} ->
+        {authenticate, {AuthMethod, AuthData}} ->
 	    case AuthMethod of
 		0 -> % Auth ok
 		    setup(StateData, []);
@@ -184,9 +185,46 @@ authenticate(StateData) ->
 		    Password = option(StateData#state.options, password, ""),
 		    User = option(StateData#state.options, user, ""),
 		    EncodedPass = encode_message(pass_md5,
-						 {User, Password, Salt}),
+                                                 {User, Password, AuthData}),
 		    ok = send(Sock, EncodedPass),
 		    authenticate(StateData);
+                10 -> % SASL
+		    Password = option(StateData#state.options, password, ""),
+		    User = option(StateData#state.options, user, ""),
+                    Mechs =
+                        lists:filter(
+                          fun(S) -> size(S) > 0 end,
+                          string:split(AuthData, <<0>>, all)),
+                    BUser = list_to_binary(User),
+                    BPassword = list_to_binary(Password),
+                    case pgsql_sasl:client_new(BUser, BPassword, Mechs) of
+                        {ok, Mech, Resp, SASLState} ->
+                            Response = encode_message(sasl_initial_response,
+                                                      {Mech, Resp}),
+                            ok = send(Sock, Response),
+                            authenticate(
+                              StateData#state{sasl_state = SASLState});
+                        {error, Error} ->
+                            {stop, {authentication, Error}}
+                    end;
+                11 -> % SASL continue
+                    case pgsql_sasl:client_step(StateData#state.sasl_state, AuthData) of
+                        {ok, Resp, SASLState} ->
+                            Response = encode_message(sasl_response, Resp),
+                            ok = send(Sock, Response),
+                            authenticate(
+                              StateData#state{sasl_state = SASLState});
+                        {error, Error} ->
+                            {stop, {authentication, Error}}
+                    end;
+                12 -> % SASL final
+                    case pgsql_sasl:client_finish(StateData#state.sasl_state, AuthData) of
+                        ok ->
+                            authenticate(
+                              StateData#state{sasl_state = undefined});
+                        {error, Error} ->
+                            {stop, {authentication, Error}}
+                    end;
 		_ ->
 		    {stop, {authentication, {unknown, AuthMethod}}}
 	    end;
@@ -687,6 +725,12 @@ encode_message(pass_plain, Password) ->
 encode_message(pass_md5, {User, Password, Salt}) ->
 		Pass = pgsql_util:pass_md5(User, Password, Salt),
 		encode($p, Pass);
+encode_message(sasl_initial_response, {Mech, Resp}) ->
+    RespLen = size(Resp),
+    Msg = <<Mech/binary, 0, RespLen:32, Resp/binary>>,
+    encode($p, Msg);
+encode_message(sasl_response, Resp) ->
+    encode($p, Resp);
 encode_message(terminate, _) ->
     encode($X, <<>>);
 encode_message(squery, Query) -> % squery as in simple query.
