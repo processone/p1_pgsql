@@ -1,3 +1,15 @@
+# Version 1.1.15
+
+* Fix 'make' compilation with rebar2
+
+# Version 1.1.14
+
+* Fix versioning and hex.pm docs publish
+
+# Version 1.1.13
+
+* Add SASL auth support
+
 # Version 1.1.12
 
 * Switch from using Travis to Github Actions as CI
