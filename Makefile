@@ -3,10 +3,13 @@ REBAR ?= rebar
 all: src
 
 src:
+	$(REBAR) get-deps
 	$(REBAR) compile
-	$(REBAR) xref
 
 clean:
 	$(REBAR) clean
+
+xref: all
+	$(REBAR) xref
 
 .PHONY: clean src
