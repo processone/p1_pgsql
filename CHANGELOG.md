@@ -1,3 +1,7 @@
+# Version 1.1.16
+
+* Updating xmpp to version 1.5.6.
+
 # Version 1.1.15
  
 * Fix 'make' compilation with rebar2
