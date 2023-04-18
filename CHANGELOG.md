@@ -1,3 +1,7 @@
+# Version 1.1.22
+
+* Fix version of xmpp
+
 # Version 1.1.21
 
 * Updating xmpp to version 46b6c192d353e60e13a5cf8ed467c5696729b624.
