@@ -1,3 +1,7 @@
+# Version 1.1.25
+
+* Updating xmpp to version 1.8.1.
+
 # Version 1.1.24
 
 * Updating xmpp to version 1.8.0.
