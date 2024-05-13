@@ -19,8 +19,6 @@
 %%% limitations under the License.
 %%%
 %%%----------------------------------------------------------------------
-SysVersion = lists:map(fun erlang:list_to_integer/1,
-		       string:tokens(erlang:system_info(version), ".")),
 
 IsRebar3 = case application:get_key(rebar, vsn) of
 	       {ok, VSN} ->
