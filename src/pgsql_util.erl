@@ -408,7 +408,11 @@ connect(Host, Port, Timeout) ->
 	    Err
     end.
 
-do_connect([{IP, Family}|AddrsFamilies], Port, Timeout, _Err) ->
+do_connect([{IP, Family}|AddrsFamilies], Port1, Timeout, _Err) ->
+    Port = case Family of
+        local -> 0;
+        _ -> Port1
+    end,
     case gen_tcp:connect(IP, Port, [{active, false}, binary,
 				    {packet, raw}, Family], Timeout) of
 	{ok, Sock} ->
@@ -419,6 +423,8 @@ do_connect([{IP, Family}|AddrsFamilies], Port, Timeout, _Err) ->
 do_connect([], _Port, _Timeout, Err) ->
     Err.
 
+lookup([$u,$n,$i,$x,$: | Path], _Timeout) ->
+    {ok, [{{local, Path}, local}]};
 lookup(Host, Timeout) ->
     case inet:parse_address(Host) of
 	{ok, IP} ->
