@@ -26,8 +26,7 @@
   {vsn,          "1.1.25"},
   {modules,      []},
   {registered,   []},
-  {applications, [kernel, stdlib, ssl]},
-  {included_applications, [xmpp]},
+  {applications, [kernel, stdlib, ssl, xmpp]},
   {mod,          {pgsql_app,[]}},
 
   %% hex.pm packaging:
