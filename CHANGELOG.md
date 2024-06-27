@@ -1,5 +1,6 @@
 # Version 1.1.26
 
+* Updating xmpp to version 1.8.2.
 * Fix issues with building on OTP27
 * Add support for unix domain sockets
 
