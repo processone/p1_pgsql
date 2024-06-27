@@ -1,3 +1,8 @@
+# Version 1.1.26
+
+* Fix issues with building on OTP27
+* Add support for unix domain sockets
+
 # Version 1.1.25
 
 * Updating xmpp to version 1.8.1.
@@ -39,7 +44,7 @@
 * Updating xmpp to version 1.5.6.
 
 # Version 1.1.15
- 
+
 * Fix 'make' compilation with rebar2
 
 # Version 1.1.14
