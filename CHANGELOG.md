@@ -1,3 +1,7 @@
+# Version 1.1.31
+
+* Updating xmpp to version 1.9.2.
+
 # Version 1.1.30
 
 * Updating xmpp to version a1dd8d3ab94fd251f20598e6f002eba38905e218.
