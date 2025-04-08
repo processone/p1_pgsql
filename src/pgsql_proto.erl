@@ -325,14 +325,17 @@ handle_call({equery, {Query, Params}}, _From, State) ->
     SyncP =     encode_message(sync, []),
     ok = send(Sock, [ParseP, BindP, DescribeP, ExecuteP, SyncP]),
 
-    {ok, Command, Desc, Status, Logs} = process_equery(State, []),
+    Reply = case process_equery(State, []) of
+        {ok, Command, Desc, Status, Logs} ->
+                OidMap = State#state.oidmap,
+                NameTypes = lists:map(fun({Name, _Format, _ColNo, Oid, _, _, _}) ->
+                                            {Name, dict:fetch(Oid, OidMap)}
+                                        end,
+                                        Desc),
+                {ok, Command, Status, NameTypes, Logs};
+        {error, Error} -> {error, Error}
+    end,
 
-    OidMap = State#state.oidmap,
-    NameTypes = lists:map(fun({Name, _Format, _ColNo, Oid, _, _, _}) ->
-				  {Name, dict:fetch(Oid, OidMap)}
-			  end,
-			  Desc),
-    Reply = {ok, Command, Status, NameTypes, Logs},
     {reply, Reply, State};
 
 %% Prepare a statement, so it can be used for queries later on.
@@ -524,8 +527,20 @@ process_equery(State, Log) ->
 	    {ok, Descs1} = pgsql_util:decode_descs(OidMap, Descs),
 	    process_equery_datarow(Descs1, Log, {undefined, Descs, undefined},
 				   AsBin);
+    {pgsql, {no_data, _}} ->
+        process_equery_nodata(Log, undefined);
 	{pgsql, Any} ->
 	    process_equery(State, [Any|Log])
+    end.
+
+process_equery_nodata(Log, Command) ->
+    receive
+    {pgsql, {command_complete, Command1}} ->
+        process_equery_nodata(Log, Command1);
+    {pgsql, {ready_for_query, Status1}} ->
+        {ok, Command, [], Status1, lists:reverse(Log)};
+    {pgsql, Any} ->
+        process_equery_nodata([Any|Log], Command)
     end.
 
 process_equery_datarow(Types, Log, Info={Command, Desc, Status}, AsBin) ->
