@@ -9,22 +9,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        otp: [19, 20, 25, 26, 27]
-    runs-on: ubuntu-22.04
+        otp: ['20', '25', '26', '27', '28']
+    runs-on: ubuntu-24.04
     container:
-      image: erlang:${{ matrix.otp }}
+      image: public.ecr.aws/docker/library/erlang:${{ matrix.otp }}
     steps:
-    - uses: actions/checkout@v3
-      if: matrix.otp < 20
     - uses: actions/checkout@v4
-      if: matrix.otp >= 20
     - run: make
     - run: rebar3 compile
     - run: rebar3 xref
     - run: rebar3 dialyzer
     - run: rebar3 eunit -v
     - name: Send to Coveralls
-      if: matrix.otp == 26
+      if: matrix.otp == 27
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
