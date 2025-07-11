@@ -1,3 +1,7 @@
+# Version 1.1.34
+
+* Updating xmpp to version 1.11.0.
+
 # Version 1.1.33
 
 * Updating xmpp to version 1.10.1.
