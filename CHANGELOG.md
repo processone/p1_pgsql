@@ -1,3 +1,7 @@
+# Version 1.1.38
+
+* Fix issue with rebar3 version
+
 # Version 1.1.37
 
 * Updating xmpp to version 1.12.0.
