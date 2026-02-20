@@ -55,7 +55,7 @@ client_step(State, ServerResponse) ->
             R = proplists:get_value(<<"r">>, SResp),
             S = base64:decode(proplists:get_value(<<"s">>, SResp)),
             Nonce = State#sasl_state.nonce,
-            NonceSize = size(Nonce),
+            NonceSize = byte_size(Nonce),
             case R of
                 <<Nonce:NonceSize/binary, _/binary>> ->
                     ClientMsg1 = client_first_message_bare(
@@ -67,20 +67,20 @@ client_step(State, ServerResponse) ->
                           ServerResponse/binary, ",",
                           ClientMsg2/binary>>,
                     Password = State#sasl_state.password,
-                    SaltedPassword = scram:salted_password(
+                    SaltedPassword = salted_password(
                                        sha256, Password, S, I),
                     ClientKey =
-                        scram:client_key(sha256, SaltedPassword),
-                    StoredKey = scram:stored_key(sha256, ClientKey),
+                        client_key(sha256, SaltedPassword),
+                    StoredKey = stored_key(sha256, ClientKey),
                     ClientSignature =
-                        scram:client_signature(sha256, StoredKey, AuthMessage),
+                        client_signature(sha256, StoredKey, AuthMessage),
                     ClientProof =
                         crypto:exor(ClientKey, ClientSignature),
                     P = base64:encode(ClientProof),
                     Msg = <<ClientMsg2/binary, ",p=", P/binary>>,
                     ServerKey =
-                        scram:server_key(sha256, SaltedPassword),
-                    V = scram:server_signature(sha256, ServerKey, AuthMessage),
+                        server_key(sha256, SaltedPassword),
+                    V = server_signature(sha256, ServerKey, AuthMessage),
                     {ok, Msg, State#sasl_state{nonce = R, verify = V}};
                 _ ->
                     {error, "Bad SASL server nonce"}
@@ -139,4 +139,31 @@ parse4(<<C, Cs/binary>>, Key, Val, Ts) ->
     parse4(Cs, Key, <<Val/binary, C>>, Ts);
 parse4(<<>>, Key, Val, Ts) ->
     parse1(<<>>, <<>>, [{Key, Val} | Ts]).
+
+salted_password(Algo, Password, Salt, IterationCount) ->
+    hi(Algo, stringprep:resourceprep(Password), Salt, IterationCount).
+
+client_key(Algo, SaltedPassword) ->
+    crypto:mac(hmac, Algo, SaltedPassword, <<"Client Key">>).
+
+stored_key(Algo, ClientKey) -> crypto:hash(Algo, ClientKey).
+
+server_key(Algo, SaltedPassword) ->
+    crypto:mac(hmac, Algo, SaltedPassword, <<"Server Key">>).
+
+client_signature(Algo, StoredKey, AuthMessage) ->
+    crypto:mac(hmac, Algo, StoredKey, AuthMessage).
+
+server_signature(Algo, ServerKey, AuthMessage) ->
+    crypto:mac(hmac, Algo, ServerKey, AuthMessage).
+
+hi(Algo, Password, Salt, IterationCount) ->
+    U1 = crypto:mac(hmac, Algo, Password, <<Salt/binary, 0, 0, 0, 1>>),
+    crypto:exor(U1, hi_round(Algo, Password, U1, IterationCount - 1)).
+
+hi_round(Algo, Password, UPrev, 1) ->
+    crypto:mac(hmac, Algo, Password, UPrev);
+hi_round(Algo, Password, UPrev, IterationCount) ->
+    U = crypto:mac(hmac, Algo, Password, UPrev),
+    crypto:exor(U, hi_round(Algo, Password, U, IterationCount - 1)).
 
