@@ -3,32 +3,31 @@ name: CI
 on: [push, pull_request]
 
 jobs:
-
   tests:
     name: Tests
     strategy:
       fail-fast: false
       matrix:
-        otp: ['20', '25', '26', '27', '28']
+        otp: ["25", "26", "27", "28"]
     runs-on: ubuntu-24.04
     container:
       image: public.ecr.aws/docker/library/erlang:${{ matrix.otp }}
     steps:
-    - uses: actions/checkout@v4
-    - run: make
-    - run: rebar3 compile
-    - run: rebar3 xref
-    - run: rebar3 dialyzer
-    - run: rebar3 eunit -v
-    - name: Send to Coveralls
-      if: matrix.otp == 27
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        COVERALLS=true rebar3 as test coveralls send
-        curl -v -k https://coveralls.io/webhook \
-             --header "Content-Type: application/json" \
-             --data '{"repo_name":"$GITHUB_REPOSITORY",
-                      "repo_token":"$GITHUB_TOKEN",
-                      "payload":{"build_num":$GITHUB_RUN_ID,
-                                 "status":"done"}}'
+      - uses: actions/checkout@v4
+      - run: make
+      - run: rebar3 compile
+      - run: rebar3 xref
+      - run: rebar3 dialyzer
+      - run: rebar3 eunit -v
+      - name: Send to Coveralls
+        if: matrix.otp == 27
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          COVERALLS=true rebar3 as test coveralls send
+          curl -v -k https://coveralls.io/webhook \
+               --header "Content-Type: application/json" \
+               --data '{"repo_name":"$GITHUB_REPOSITORY",
+                        "repo_token":"$GITHUB_TOKEN",
+                        "payload":{"build_num":$GITHUB_RUN_ID,
+                                   "status":"done"}}'
