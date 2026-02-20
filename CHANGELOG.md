@@ -1,3 +1,7 @@
+# Version 1.1.40
+
+* Fix issues reported by dialyzer
+
 # Version 1.1.39
 
 * Stop depending on xmpp, and replace its usage with stringprep
