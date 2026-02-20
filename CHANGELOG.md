@@ -1,3 +1,7 @@
+# Version 1.1.39
+
+* Stop depending on xmpp, and replace its usage with stringprep
+
 # Version 1.1.38
 
 * Fix issue with rebar3 version
