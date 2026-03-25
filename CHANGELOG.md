@@ -1,3 +1,7 @@
+# Version 1.1.41
+
+* Updating stringprep to version 1.0.34.
+
 # Version 1.1.40
 
 * Fix issues reported by dialyzer
